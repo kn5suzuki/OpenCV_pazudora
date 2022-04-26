@@ -1,5 +1,4 @@
 from playsound import playsound
-import threading
 
 def play_swap_sound():
     playsound("sound/swap.mp3")

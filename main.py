@@ -8,11 +8,14 @@ import play_sound
 import threading
 import copy
 import random
-from cvzone.HandTrackingModule import HandDetector
 import queue
 import sys
+import mediapipe as mp
 
-detector = HandDetector(detectionCon=0.8)
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+mp_hands = mp.solutions.hands
+
 
 #カメラ設定
 CAMERA_FPS = 12
@@ -40,7 +43,7 @@ bet_stone_x = 65
 hold_time_limit = 10
 
 #ホールドの指の間隔
-hold_finger_bet = 80
+hold_finger_dist = 80
 
 timerbar_length = bet_stone_x
 hpbar_length = bet_stone_x*width
@@ -122,28 +125,28 @@ def calc_enemyattack():
 
 def swap_cells(holding_stone):
     swapped = False
-    if lmList[8][0] > stage_x + bet_stone_x*(holding_stone[1]+1) and holding_stone[1] < width-1:
+    if fin1.x*CAMERA_WIDTH > stage_x + bet_stone_x*(holding_stone[1]+1) and holding_stone[1] < width-1:
         cells[holding_stone[0]][holding_stone[1]], cells[holding_stone[0]][holding_stone[1]+1] = cells[holding_stone[0]][holding_stone[1]+1], cells[holding_stone[0]][holding_stone[1]]
         holding_stone[1] += 1
         swapped = True
         thread = threading.Thread(target=play_sound.play_swap_sound)
         thread.start()
                     
-    if lmList[8][0] < stage_x + bet_stone_x*holding_stone[1] and holding_stone[1] > 0:
+    if fin1.x*CAMERA_WIDTH < stage_x + bet_stone_x*holding_stone[1] and holding_stone[1] > 0:
         cells[holding_stone[0]][holding_stone[1]], cells[holding_stone[0]][holding_stone[1]-1] = cells[holding_stone[0]][holding_stone[1]-1], cells[holding_stone[0]][holding_stone[1]]
         holding_stone[1] -= 1
         swapped = True
         thread = threading.Thread(target=play_sound.play_swap_sound)
         thread.start()
 
-    if lmList[8][1] > stage_y + bet_stone_y*(holding_stone[0]+1) and holding_stone[0] < height-1:
+    if fin1.y*CAMERA_HEIGHT > stage_y + bet_stone_y*(holding_stone[0]+1) and holding_stone[0] < height-1:
         cells[holding_stone[0]][holding_stone[1]], cells[holding_stone[0]+1][holding_stone[1]] = cells[holding_stone[0]+1][holding_stone[1]], cells[holding_stone[0]][holding_stone[1]]
         holding_stone[0] += 1
         swapped = True
         thread = threading.Thread(target=play_sound.play_swap_sound)
         thread.start()
         
-    if lmList[8][1] < stage_y + bet_stone_y*holding_stone[0] and holding_stone[0] > 0:
+    if fin1.y*CAMERA_HEIGHT < stage_y + bet_stone_y*holding_stone[0] and holding_stone[0] > 0:
         cells[holding_stone[0]][holding_stone[1]], cells[holding_stone[0]-1][holding_stone[1]] = cells[holding_stone[0]-1][holding_stone[1]], cells[holding_stone[0]][holding_stone[1]]
         holding_stone[0] -= 1
         swapped = True
@@ -173,7 +176,7 @@ def draw_all_stone(img):
             x = bet_stone_x*j + stage_x
             y = bet_stone_y*i + stage_y
             if i == holding_stone[0] and j == holding_stone[1]:
-                img = draw_stone(img, lmList[8][0]-30, lmList[8][-1]-30, stone_width+15, stone_height+15, i, j)
+                img = draw_stone(img, int(fin1.x*CAMERA_WIDTH)-30, int(fin1.y*CAMERA_HEIGHT)-30, stone_width+15, stone_height+15, i, j)
             else:
                 img = draw_stone(img, x, y, stone_width, stone_height, i, j)
     return img
@@ -250,13 +253,13 @@ def init_cells(cells):
 
 def draw_game(img):
     img = draw_all_stone(img)
-    if lmList:
-        cv2.putText(img, str(int(l1)), (stage_x,bet_stone_y*(height+1)+stage_y-30), cv2.FONT_HERSHEY_PLAIN,1,(255,255,255),2)
+    if results.multi_hand_landmarks:
+        cv2.putText(img, str(int(fin_dist))+'/'+str(hold_finger_dist), (stage_x,bet_stone_y*(height+1)+stage_y-30), cv2.FONT_HERSHEY_PLAIN,1,(255,255,255),2)
         if moving_flag:
-            cv2.rectangle(img, (lmList[8][0], lmList[8][1]-10), (lmList[8][0]+timerbar_length, lmList[8][1]-5),(0,0,0),cv2.FILLED)
-            cv2.rectangle(img, (lmList[8][0], lmList[8][1]-10), (lmList[8][0]+int(timerbar_length*hold_left//hold_time_limit), lmList[8][1]-5),(255,255,255),cv2.FILLED)
+            cv2.rectangle(img, (int(fin1.x*CAMERA_WIDTH), int(fin1.y*CAMERA_HEIGHT)-10), (int(fin1.x*CAMERA_WIDTH)+timerbar_length, int(fin1.y*CAMERA_HEIGHT)-5),(0,0,0),cv2.FILLED)
+            cv2.rectangle(img, (int(fin1.x*CAMERA_WIDTH), int(fin1.y*CAMERA_HEIGHT)-10), (int(fin1.x*CAMERA_WIDTH)+int(timerbar_length*hold_left//hold_time_limit), int(fin1.y*CAMERA_HEIGHT)-5),(255,255,255),cv2.FILLED)
         else:
-            cv2.circle(img, (lmList[8][0], lmList[8][1]), 7,(255,255,255),cv2.FILLED)
+            cv2.circle(img, (int(fin1.x*CAMERA_WIDTH), int(fin1.y*CAMERA_HEIGHT)), 7,(255,255,255),cv2.FILLED)
     text_hp_1 = 'YOUR HP:'+str(your_hp)
     cv2.rectangle(img, (stage_x, stage_y-10), (stage_x+hpbar_length, stage_y-5),(0,0,255),cv2.FILLED)
     cv2.rectangle(img, (stage_x, stage_y-10), (stage_x+hpbar_length*your_hp//your_max_hp, stage_y-5),(0,255,0),cv2.FILLED)
@@ -264,7 +267,7 @@ def draw_game(img):
     if initial_flag:
         cv2.rectangle(img, (stage_x-50, bet_stone_y+bet_stone_y*2), (stage_x+bet_stone_x*width+50, bet_stone_y+bet_stone_y*3),(255,0,255),cv2.FILLED)
         cv2.putText(img, 'BOSS BATTLE!', (stage_x, bet_stone_y+bet_stone_y*2+50), cv2.FONT_HERSHEY_PLAIN,3.5,(0,0,255),5)
-    elif not waiting_flag and not lmList:
+    elif not waiting_flag and not results.multi_hand_landmarks:
         text = 'NO HAND DETECTED'
         cv2.putText(img, text, (stage_x, bet_stone_y+bet_stone_y*2+30), cv2.FONT_HERSHEY_PLAIN,2.5,(255,255,255),3)
         
@@ -302,192 +305,213 @@ def draw_enemy(enemy):
     cv2.putText(enemy, text_hp_2, (80-10, 250-10), cv2.FONT_HERSHEY_PLAIN, 1, (255,255,255), 2)
     return enemy
 
-
+def calc_finger_dist(fin1, fin2):
+    return np.sqrt((fin1.x*CAMERA_WIDTH-fin2.x*CAMERA_WIDTH)**2 + (fin1.y*CAMERA_HEIGHT-fin2.y*CAMERA_HEIGHT)**2)
 
 
 
 cells = init_cells(cells)
 back_bgm = True
 start_time = time.perf_counter()
-while True:
-    now_time = time.perf_counter()
-    flag, img = cam.read()
-    img = cv2.flip(img, 1)
-    img = detector.findHands(img)
-    lmList, bboxInfo = detector.findPosition(img)
-    if lmList:
-        l1, _, _ = detector.findDistance(8, 12, img)
-    img = adjust(img, alpha=0.4, beta=20.0)
 
-    if initial_flag:
-        if now_time - start_time > init_wait_time:
-            initial_flag = False
-#待ち状態でない=操作可能なとき
-    elif not waiting_flag:       
-        if lmList:
-        #ホールド中
-            if holding_flag and l1 < hold_finger_bet:
-                if moving_flag:
-                    hold_time = now_time - hold_start_time
-                    hold_left = hold_time_limit - hold_time
-                    if hold_left < 0:
-                        holding_flag = False
+with mp_hands.Hands(
+    max_num_hands=1,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5) as hands:
+
+    while True:
+        now_time = time.perf_counter()
+        flag, img = cam.read()
+        img = cv2.flip(img, 1)
+
+        img.flags.writeable = False
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        results = hands.process(img)
+
+        img.flags.writeable = True
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                mp_drawing.draw_landmarks(img, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            landmarks = results.multi_hand_landmarks[0]
+            fin1 = landmarks.landmark[8]
+            fin2 = landmarks.landmark[12]
+            fin_dist = calc_finger_dist(fin1, fin2)
+        img = adjust(img, alpha=0.4, beta=20.0)
+
+        if initial_flag:
+            if now_time - start_time > init_wait_time:
+                initial_flag = False
+    #待ち状態でない=操作可能なとき
+        elif not waiting_flag:       
+            # if lmList:
+            if results.multi_hand_landmarks:
+            #ホールド中
+                if holding_flag and fin_dist < hold_finger_dist:
+                    if moving_flag:
+                        hold_time = now_time - hold_start_time
+                        hold_left = hold_time_limit - hold_time
+                        if hold_left < 0:
+                            holding_flag = False
+                            moving_flag = False
+                            holding_stone = [-1, -1]
+                            check_delete_flag = True
+                            waiting_flag = True
+            #ホールドする
+                elif not holding_flag and fin_dist < hold_finger_dist and fin1.y*CAMERA_HEIGHT>stage_y and fin1.x*CAMERA_WIDTH>stage_x and fin1.y*CAMERA_HEIGHT<stage_y+bet_stone_y*height and fin1.x*CAMERA_WIDTH<stage_x+bet_stone_x*width:
+                    holding_flag = True
+                    holding_stone = [(int(fin1.y*CAMERA_HEIGHT)-stage_y)//bet_stone_y, (int(fin1.x*CAMERA_WIDTH)-stage_x)//bet_stone_x]
+
+            #離す
+                else:
+                    holding_flag = False
+                    holding_stone = [-1, -1]
+                    if moving_flag:
                         moving_flag = False
-                        holding_stone = [-1, -1]
                         check_delete_flag = True
                         waiting_flag = True
-        #ホールドする
-            elif not holding_flag and l1 < hold_finger_bet and lmList[8][1]>stage_y and lmList[8][0]>stage_x and lmList[8][1]<stage_y+bet_stone_y*height and lmList[8][0]<stage_x+bet_stone_x*width:
-                holding_flag = True
-                holding_stone = [(lmList[8][1]-stage_y)//bet_stone_y, (lmList[8][0]-stage_x)//bet_stone_x]
-        #離す
+            #スワップ処理
+                if holding_flag and holding_stone[0]!=-1 and holding_stone[1]!=-1:
+                    holding_stone, swapped_flag = swap_cells(holding_stone)
+                #ターマーの開始
+                    if not moving_flag and swapped_flag:
+                        hold_start_time = now_time
+                        moving_flag = True
+                        hold_left = hold_time_limit
+        #手が認識されない
             else:
                 holding_flag = False
-                holding_stone = [-1, -1]
-                if moving_flag:
-                    moving_flag = False
-                    check_delete_flag = True
-                    waiting_flag = True
-        #スワップ処理
-            if holding_flag and holding_stone[0]!=-1 and holding_stone[1]!=-1:
-                holding_stone, swapped_flag = swap_cells(holding_stone)
-            #ターマーの開始
-                if not moving_flag and swapped_flag:
-                    hold_start_time = now_time
-                    moving_flag = True
-                    hold_left = hold_time_limit
-    #手が認識されない
+                moving_flag = False
+
+    #待ち状態のとき
         else:
-            holding_flag = False
-            moving_flag = False
+            if finished_flag:
+                if now_time - finished_time > 3:
+                    break
+            if wait_delete_flag:
+                if now_time - wait_start_time > delete_wait_time:
+                    wait_delete_flag = False
 
-#待ち状態のとき
-    else:
-        if finished_flag:
-            if now_time - finished_time > 3:
-                break
-        if wait_delete_flag:
-            if now_time - wait_start_time > delete_wait_time:
-                wait_delete_flag = False
+            elif wait_fall_flag:
+                if now_time - wait_start_time > fall_wait_time:
+                    wait_fall_flag = False
 
-        elif wait_fall_flag:
-            if now_time - wait_start_time > fall_wait_time:
-                wait_fall_flag = False
+            elif wait_yourattack_flag:
+                if now_time - wait_start_time > yourattack_wait_time:
+                    wait_yourattack_flag = False
+                    yourattack = 0
+                #敵を倒していたら終わり
+                    if enemy_hp == 0:
+                        finished_flag = True
+                        finished_time = now_time
+                        winner = 0
+                        threading.Thread(target=play_sound.play_win_sound).start()
+                        continue
+                    wait_enemyattack_flag = True
+                    start_wait = now_time
+                    threading.Thread(target=play_sound.play_enemyattack_sound).start()
+                    enemyattack = calc_enemyattack()
+                    your_hp -= enemyattack
+                    if your_hp <= 0:
+                        your_hp = 0
+                        
+            elif wait_enemyattack_flag:
+                if now_time - start_wait > enemyattack_wait_time:
+                    wait_enemyattack_flag = False
+                #倒されていたら終わり
+                    if your_hp == 0:
+                        finished_flag = True
+                        finished_time = now_time
+                        winner = 1
+                        threading.Thread(target=play_sound.play_lose_sound).start()
+                        continue
+                    waiting_flag = False
+                    
+            elif check_delete_flag:
+                check_delete_flag = False
+                for i in range(height):
+                    for j in range(width):
+                        checked_delete[i][j] = False
+                for y in range(height):
+                    for x in range(width):
+                        if not check_delete_flag and not checked_delete[y][x]:
+                            tmp = cells[y][x]
+                            check_list.put([y, x])
+                            checked_delete[y][x] = True
+                            while not check_list.empty():
+                                pos = check_list.get()
+                                check_delete(pos[1], pos[0], cells[pos[0]][pos[1]])
+                            if not delete_list.empty():
+                                n = 0
+                                while not delete_list.empty():
+                                    n += 1
+                                    pos = delete_list.get()
+                                    cells[pos[0]][pos[1]] = -1
+                                check_delete_flag = True
+                                combo += 1
+                                threading.Thread(target=play_sound.play_delete_sound).start()
+                                if tmp == 4:
+                                    deleted_heal_stone_num += n
+                                else:
+                                    deleted_attack_stone_num += n
+                                heal = calc_heal(deleted_heal_stone_num, combo)
+                                yourattack = calc_yourattack(deleted_attack_stone_num, combo)
+                                wait_delete_flag = True
+                                check_fall_flag = True
+                                wait_start_time = now_time
+                                print_x = x
+                                print_y = y
 
-        elif wait_yourattack_flag:
-            if now_time - wait_start_time > yourattack_wait_time:
-                wait_yourattack_flag = False
-                yourattack = 0
-            #敵を倒していたら終わり
-                if enemy_hp == 0:
-                    finished_flag = True
-                    finished_time = now_time
-                    winner = 0
-                    threading.Thread(target=play_sound.play_win_sound).start()
-                    continue
-                wait_enemyattack_flag = True
-                start_wait = now_time
-                threading.Thread(target=play_sound.play_enemyattack_sound).start()
-                enemyattack = calc_enemyattack()
-                your_hp -= enemyattack
-                if your_hp <= 0:
-                    your_hp = 0
-                      
-        elif wait_enemyattack_flag:
-            if now_time - start_wait > enemyattack_wait_time:
-                wait_enemyattack_flag = False
-            #倒されていたら終わり
-                if your_hp == 0:
-                    finished_flag = True
-                    finished_time = now_time
-                    winner = 1
-                    threading.Thread(target=play_sound.play_lose_sound).start()
-                    continue
-                waiting_flag = False
-                
-        elif check_delete_flag:
-            check_delete_flag = False
-            for i in range(height):
-                for j in range(width):
-                    checked_delete[i][j] = False
-            for y in range(height):
-                for x in range(width):
-                    if not check_delete_flag and not checked_delete[y][x]:
-                        tmp = cells[y][x]
-                        check_list.put([y, x])
-                        checked_delete[y][x] = True
-                        while not check_list.empty():
-                            pos = check_list.get()
-                            check_delete(pos[1], pos[0], cells[pos[0]][pos[1]])
-                        if not delete_list.empty():
-                            n = 0
-                            while not delete_list.empty():
-                                n += 1
-                                pos = delete_list.get()
-                                cells[pos[0]][pos[1]] = -1
-                            check_delete_flag = True
-                            combo += 1
-                            threading.Thread(target=play_sound.play_delete_sound).start()
-                            if tmp == 4:
-                                deleted_heal_stone_num += n
-                            else:
-                                deleted_attack_stone_num += n
-                            heal = calc_heal(deleted_heal_stone_num, combo)
-                            yourattack = calc_yourattack(deleted_attack_stone_num, combo)
-                            wait_delete_flag = True
+                if not check_delete_flag and not check_fall_flag:
+                    enemy_hp -= yourattack
+                    your_hp += heal
+                    if enemy_hp <= 0:
+                        enemy_hp = 0
+                    if your_hp > your_max_hp:
+                        your_hp = your_max_hp
+                    deleted_attack_stone_num = 0
+                    deleted_heal_stone_num = 0
+                    combo = 0
+                    heal = 0
+                    wait_yourattack_flag = True
+                    threading.Thread(target=play_sound.play_yourattack_sound).start()
+                    wait_start_time = now_time
+
+            elif check_fall_flag:
+                check_fall_flag = False
+                for y in range(height-2, -1, -1):
+                    for x in range(width):
+                        if cells[y][x] != -1 and cells[y+1][x] == -1:
+                            cells[y+1][x], cells[y][x] = cells[y][x], -1
                             check_fall_flag = True
+                            wait_fall_flag = True
                             wait_start_time = now_time
-                            print_x = x
-                            print_y = y
-
-            if not check_delete_flag and not check_fall_flag:
-                enemy_hp -= yourattack
-                your_hp += heal
-                if enemy_hp <= 0:
-                    enemy_hp = 0
-                if your_hp > your_max_hp:
-                    your_hp = your_max_hp
-                deleted_attack_stone_num = 0
-                deleted_heal_stone_num = 0
-                combo = 0
-                heal = 0
-                wait_yourattack_flag = True
-                threading.Thread(target=play_sound.play_yourattack_sound).start()
-                wait_start_time = now_time
-
-        elif check_fall_flag:
-            check_fall_flag = False
-            for y in range(height-2, -1, -1):
                 for x in range(width):
-                    if cells[y][x] != -1 and cells[y+1][x] == -1:
-                        cells[y+1][x], cells[y][x] = cells[y][x], -1
+                    if cells[0][x] == -1:
+                        cells[0][x] = random.randrange(max_type)
                         check_fall_flag = True
                         wait_fall_flag = True
                         wait_start_time = now_time
-            for x in range(width):
-                if cells[0][x] == -1:
-                    cells[0][x] = random.randrange(max_type)
-                    check_fall_flag = True
-                    wait_fall_flag = True
-                    wait_start_time = now_time
-            
-            if not check_fall_flag:
-                check_delete_flag = True
-                        
-    img = draw_game(img)
-    print_x = -1
-    print_y = -1
-    img = img[img_up:img_up+IMAGE_HEIGHT, img_left:img_left+IMAGE_WIDTH]
-    enemy_tmp = draw_enemy(enemy)
-    img = cv2.hconcat([img, enemy_tmp])
-    img = cv2.resize(img, (WINDOW_WIDTH, WINDOW_HEIGHT))
+                
+                if not check_fall_flag:
+                    check_delete_flag = True
+                            
+        img = draw_game(img)
+        print_x = -1
+        print_y = -1
+        img = img[img_up:img_up+IMAGE_HEIGHT, img_left:img_left+IMAGE_WIDTH]
+        enemy_tmp = draw_enemy(enemy)
+        img = cv2.hconcat([img, enemy_tmp])
+        img = cv2.resize(img, (WINDOW_WIDTH, WINDOW_HEIGHT))
 
-    cv2.imshow("Image", img)
-    if back_bgm:
-        back_bgm = False
-        thread_bgm = threading.Thread(target=play_sound.play_bgm)
-        thread_bgm.start()
-    cv2.waitKey(10)
+        cv2.imshow("Image", img)
+        if back_bgm:
+            back_bgm = False
+            thread_bgm = threading.Thread(target=play_sound.play_bgm)
+            thread_bgm.start()
+        cv2.waitKey(10)
 
-cv2.destroyAllWindows()
-sys.exit()
+    cv2.destroyAllWindows()
+    sys.exit()
